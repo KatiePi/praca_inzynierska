@@ -35,7 +35,7 @@ renderCharts<-function()
 renderStatistics<-function(){
   fluidRow(
     selectInput("statisticType", "Statistic type:",
-                c("Monthly" = "%Y-%b",
+                c("Monthly" = "%Y-%m",
                   "Yearly" = "%Y"),
                 selected = "Monthly"),
     selectInput("analyzedValue", "Variable to anayze:",

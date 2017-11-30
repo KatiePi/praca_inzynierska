@@ -5,6 +5,7 @@ library(RMySQL)
 library(dbConnect)
 library(R.oo)
 library(ggplot2)
+library(plyr)
 source("~/Analyzer.R")
 source("./DbWorker.R")
 
@@ -130,52 +131,111 @@ renderNews<-function(input, output, session, dbConnection){
 
 renderStatistisc<-function(input, output, session, dbConnection) {
   
-  getActivitiesDataQuery <- "select activity.idActivity,
-                             activity.pathToFile,
+  #TODO - pobierz dane tylko zalogowanego uzytkownika - where id = zalogowanyUzytkownik
+  getActivitiesDataQuery <- "select 
                              activity.date,
-                             activity.name,
                              activity.timeLasting,
                              activity.burnCalories,
-                             activity.sharedName,
                              activitytype.name as activityType,
                              activity.userId,
                              activity.distance
                              from activity join activitytype 
                              on activity.activityType = activitytype.idactivityType;"
+  
+  activitiesData <- dbGetQuery(dbConnection, getActivitiesDataQuery)
+  #sort data by activity date
+  activitiesData <- with(activitiesData,  activitiesData[order(date) , ])
+  #change date format from char to Date
+  activitiesData$date <- as.Date(activitiesData$date, "%Y-%m-%d")
+  
+  output$main_plot <- renderPlot({
+    #setting interactive plot properties
+    statisticType <- input$statisticType
+    analyzedColumn <- activitiesData[,c(input$analyzedValue)]
+    barPositioning <- input$barPositioning
+    selectLabel <- ({
+      switch(input$analyzedValue,
+             "timeLasting" = "Time lasting",
+             "burnCalories" = "Burn calories",
+             "distance" = "Distance")
+    })
+    
+    interactivePlot <- ggplot(activitiesData, aes(x=format(date, statisticType), y=analyzedColumn,
+                                                  fill=factor(activityType))) +
+      labs(fill = "Activity Type", x="Date", y=selectLabel) +
+      geom_bar(stat="identity", position = barPositioning) + scale_fill_manual(breaks = c("RUNNING", "BIKE_RIDING","SWIMMING"),
+                                                    labels = c("Running", "Bike riding", "Swimming"),
+                                                    values = c("#D55E00", "#E69F00", "#56B4E9"))
+    print(interactivePlot)
+  })
+}
 
+renderPercentiles<-function(input, output, session, dbConnection) {
+  
+  getActivitiesDataQuery <- "select activity.idActivity,
+  activity.pathToFile,
+  activity.date,
+  activity.name,
+  activity.timeLasting,
+  activity.burnCalories,
+  activity.sharedName,
+  activitytype.name as activityType,
+  activity.userId,
+  activity.distance
+  from activity join activitytype 
+  on activity.activityType = activitytype.idactivityType;"
+  
   getDataFrameQ <- paste(getActivitiesDataQuery,sep="")
   activitiesData <- dbGetQuery(dbConnection, getDataFrameQ)
   
   #sort data by activity date
   activitiesData <- with(activitiesData,  activitiesData[order(date) , ])
-  #change date format
+  #change date format from char to Date
   activitiesData$date <- as.Date(activitiesData$date, "%Y-%m-%d")
   
+  #dorobic przycinanie po roku i dopisac
   activitiesData$date <- cut(activitiesData$date, "months")
   
-  library(plyr)
-  dat_quantiles <- ddply(activitiesData, .(date), summarise, P00=quantile(burnCalories, 0.00), P05=quantile(burnCalories, 0.05), P50=quantile(burnCalories, 0.5), P1=quantile(burnCalories, 1))
+  newAggregate <- aggregate(activitiesData$burnCalories, 
+                            by=list(date=activitiesData$date, userId=activitiesData$userId), 
+                            FUN=sum)
+  
+  #cut data to months
+  
+  dat_quantiles <- ddply(activitiesData, .(userId, date), summarise,
+                         P00=quantile(burnCalories, 0.00), 
+                         P25=quantile(burnCalories, 0.25), 
+                         P50=quantile(burnCalories, 0.5), 
+                         P75=quantile(burnCalories, 0.75),
+                         P1=quantile(burnCalories, 1))
   
   total <- merge(activitiesData, dat_quantiles, by='date')
+  #need to change to Date type again
+  total$date <- as.Date(total$date, "%Y-%m-%d")
   
-  year <- with(activitiesData, activitiesData[(date <= "2016-12-31"),])
+  dat_quantiles$date <- as.Date(dat_quantiles$date, "%Y-%m-%d")
   
-  qTest <- quantile(year$burnCalories, prob = c(0.5))
   
-  #qTest2 <- c(900,900,900,900,900)
-  #work
-  #jesli uzywam geo point to punkty sie nakladaja i jest zle
   #ggplot(year, aes(x=format(date, "%Y"), y=burnCalories)) + geom_bar(stat="identity", width = 0.1)
   
   #work
-  #p <- ggplot(year, aes(x=format(date, "%Y"), y=burnCalories)) + geom_bar(stat="identity")
-  #p <- p + geom_hline(aes(yintercept=qTest), colour='blue') + geom_text(aes(1.1,qTest,label = "Percentile 50", vjust = -1))
+  #p <- ggplot(total, aes(x=format(date, "%Y-%b"), y=P50)) + geom_line(stat="identity")
+  
+  
+  #p <- ggplot() + geom_rug(data=total, mapping=aes(y=P50), color="blue")
+  #print(p)
+  #p <- p + geom_point(data=total, aes(x=format(date, "%Y-%b"), y=P50), colour="blue")
   #print(p)
   
-  p <- ggplot(activitiesData, aes(x=format(date, "%Y"), y=burnCalories)) + geom_bar(stat="identity")
-  p <- p + geom_hline(aes(yintercept=quantile(activitiesData$burnCalories, prob = c(0.5))), colour='blue') 
-  p <- p + geom_text(aes(1.1,qTest,label = "Percentile 50", vjust = -1))
+  p <- ggplot() + geom_bar(data=dat_quantiles, aes(x=format(date, "%Y-%b"), y=P50), colour="blue")
   print(p)
+  p <- p + abline(total, h=P50, color="blue")
+  print(p)
+  
+  #p <- ggplot(activitiesData, aes(x=format(date, "%Y"), y=burnCalories)) + geom_bar(stat="identity")
+  #p <- p + geom_hline(aes(yintercept=quantile(activitiesData$burnCalories, prob = c(0.5))), colour='blue') 
+  #p <- p + geom_text(aes(1.1,qTest,label = "Percentile 50", vjust = -1))
+  #print(p)
   
   output$main_plot <- renderPlot({
     #setting plot properties
@@ -189,12 +249,12 @@ renderStatistisc<-function(input, output, session, dbConnection) {
              "distance" = "Distance")
     })
     
-    interactivePlot <- ggplot(activitiesData, aes(x=format(date, statisticType), y=analyzedColumn,
+    interactivePlot <- ggplot(activitiesData, aes(x=factor(date, ordered = T), y=analyzedColumn,
                                                   fill=factor(activityType))) + 
       labs(fill = "Activity Type", x="Date", y=selectLabel) +
       geom_bar(stat="identity", position = barPositioning) + scale_fill_manual(breaks = c("RUNNING", "BIKE_RIDING","SWIMMING"),
-                                                    labels = c("Running", "Bike riding", "Swimming"),
-                                                    values = c("#D55E00", "#E69F00", "#56B4E9"))
+                                                                               labels = c("Running", "Bike riding", "Swimming"),
+                                                                               values = c("#D55E00", "#E69F00", "#56B4E9"))
     print(interactivePlot)
     
   })
@@ -208,6 +268,7 @@ function(input, output, session) {
   setGlobalEnv()
   renderCharts(input, output, session, dbConnection2)
   renderStatistisc(input, output, session, dbConnection2)
+  #renderPercentiles(input, output, session, dbConnection2)
   renderUserData(input, output, session, dbConnection2)
   renderNews(input, output, session, dbConnection2)
   
