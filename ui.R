@@ -2,7 +2,7 @@ library(shiny)
 library(shinyjs)
 
 #1. Problem z dekodowaniem znakow - znaki polskiego
-renderCharts<-function()
+renderSingleTrainingAnalyzer<-function()
 {
   fluidRow(
     column(4,
@@ -21,7 +21,8 @@ renderCharts<-function()
            #input trainings to analyze
            uiOutput("trainingSelect"),
            br(),
-           h6("lista dodanych treningow do analizy ...")
+           h6("lista dodanych treningow do analizy ..."),
+           sliderInput("speedLowessScale", "Lowess value", 0.01, 1, 0.01, step = 0.01)
     ),
     column(8,
            h4("Example 1"),
@@ -37,17 +38,17 @@ renderStatistics<-function(){
     selectInput("statisticType", "Statistic type:",
                 c("Monthly" = "%Y-%m",
                   "Yearly" = "%Y"),
-                selected = "Monthly"),
+                selected = "%Y-%m"),
     selectInput("analyzedValue", "Variable to anayze:",
                 c("Time lasting" = "timeLasting",
                   "Burn calories" = "burnCalories",
                   "Distance" = "distance"),
-                selected = "Time lasting"),
+                selected = "timeLasting"),
     selectInput("barPositioning", "Bars positioning:",
                 c("Stack" = "stack",
                   "Dodge" = "dodge"),
-                selected = "Stack"),
-    plotOutput(outputId = "main_plot")
+                selected = "stack"),
+    plotOutput(outputId = "statisticPlot")
   )
 }
 
@@ -64,8 +65,26 @@ renderUserData<-function(){
   )
 }
 
-renderNews<-function(){
-  
+renderComparisionSection<-function(){
+  fluidRow(
+    selectInput("percentileDateType", "Date scale:",
+                c("Monthly" = "%Y-%m",
+                  "Yearly" = "%Y"),
+                selected = "%Y-%m"),
+    selectInput("percentileAnalyzedValue", "Variable to anayze:",
+                c("Time lasting" = "timeLasting",
+                  "Burn calories" = "burnCalories",
+                  "Distance" = "distance"),
+                selected = "burnCalories"),
+    selectInput("percentileValue", "Percentile value:",
+                c("0" = "0",
+                  "0.25" = "0.25",
+                  "0.5" = "0.5",
+                  "0.75" = "0.75",
+                  "1" = "1"),
+                selected = "0.5"),
+    plotOutput(outputId = "percentilePlot")
+  )
 }
 
 fluidPage(
@@ -74,14 +93,14 @@ fluidPage(
   navbarPage("Training analyzer",
                      tabPanel("User data",
                               renderUserData()),
-                     tabPanel("Charts",
-                              renderCharts()
+                     tabPanel("Analyze single training",
+                              renderSingleTrainingAnalyzer()
                               ),
                      tabPanel("Statistics",
                               renderStatistics()
                      ),
-                     tabPanel("News",
-                              renderNews())
+                     tabPanel("Compare yourself to others",
+                              renderComparisionSection())
   )
 )
 
