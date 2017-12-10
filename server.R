@@ -6,6 +6,7 @@ library(dbConnect)
 library(R.oo)
 library(ggplot2)
 library(plyr)
+library(data.table)
 source("~/Analyzer.R")
 source("./DbWorker.R")
 
@@ -13,187 +14,289 @@ setGlobalEnv <- function(){
   Sys.setlocale("LC_TIME", "C")
 }
 
+USER_LOGIN.env <- new.env()
+USER_LOGIN.env$var <- ""
+
+makeLoginRegistrationFieldEnable <- function () {
+  enable("userDataApproveButtonReg")
+  enable("userDataEmailReg")
+  enable("userDataPasswordReg")
+  enable("userDataLoginReg")
+  enable("userDataAgeReg")
+  enable("userDataApproveButtonLog")
+  enable("userDataLoginLog")
+  enable("userDataPasswordLog")
+}
+
+makeLoginRegistrationFieldDisable <- function () {
+  disable("userDataApproveButtonReg")
+  disable("userDataEmailReg")
+  disable("userDataPasswordReg")
+  disable("userDataLoginReg")
+  disable("userDataAgeReg")
+  disable("userDataApproveButtonLog")
+  disable("userDataLoginLog")
+  disable("userDataPasswordLog")
+}
+
 renderSingleTrainingCharts<-function(input, output, session, dbConnection){
   
-  dbConnection <- dbConnection 
+  userLogin <- USER_LOGIN.env$var
   
+  renderCharts <- function(gpxAsDataFrame) {
+    output$examplePlot <- renderPlot({plot(gpxAsDataFrame$longitude, gpxAsDataFrame$latitude,
+                                           col = c("green","red")[factor(gpxAsDataFrame$speedComparison)],
+                                           ylab = "latitude", xlab = "longitude")},
+                                     width = 600, height = 400)
+    
+    observeEvent(input$speedLowessScale, { 
+      #chart 2
+      speedLowessScale = input$speedLowessScale
+      gpxAsDataFrame$lowess.speed <- lowess(gpxAsDataFrame$speedKmPerH, f = speedLowessScale)$y
+      # mozna dorobic z wysokoscia nad p morza
+      #gpxAsDataFrame$lowess.elevation <- lowess(gpxAsDataFrame$ele, f = 0.2)$y
+      output$examplePlot2 <- renderPlot({plot(gpxAsDataFrame$speedKmPerH, type = "l", bty = "n", xaxt = "n", ylab = "Speed (km/h)", xlab = "")
+        lines(gpxAsDataFrame$lowess.speed, col = "green", lwd = 3)
+        legend(x="bottom", legend = c("GPS speed", "Lowess speed"),
+               col = c("black", "green"), lwd = c(1,3), bty = "n")}, width = 600, height = 400)
+    })
+  }
+
   observeEvent(input$addedFile, { 
     addedFile = input$addedFile
      if (is.null(addedFile)) {
       return(NULL)
      }
     # Object from Analyzer.R
-    analyzerObj <- analyzer$new(addedFile = addedFile)
+    analyzerObj <- analyzer$new(addedFile = addedFile, userLogin <- userLogin)
     gpxAsDataFrame <- analyzerObj$caltulateGPSData()
+    gpxAsDataFrame$mean <- with(gpxAsDataFrame, mean(speedKmPerH))
+    #caltulate if speed is above or below mean
+    gpxAsDataFrame$speedComparison <- 0
+    gpxAsDataFrame <- transform(gpxAsDataFrame, speedComparison = ifelse(speedKmPerH > mean, "ABOVE", "BELOW"))
+    renderStatistisc(input, output, session, dbConnection)
+    renderPercentiles(input, output, session, dbConnection)
     
     if(!(is.data.frame(gpxAsDataFrame) && nrow(gpxAsDataFrame)==0)) {
-      #chart example 1
-      output$examplePlot <- renderPlot({plot(gpxAsDataFrame$longitude, gpxAsDataFrame$latitude,
-                                             ylab = "latitude", xlab = "longitude")}, width = 600, height = 400)
-      
-      observeEvent(input$speedLowessScale, { 
-        print("i am here speedLowessScale")
-        #chart example 2
-        speedLowessScale = input$speedLowessScale
-        gpxAsDataFrame$lowess.speed <- lowess(gpxAsDataFrame$speed.km.per.h, f = speedLowessScale)$y
-        # mozna dorobic z wysokoscia nad p morza
-        #gpxAsDataFrame$lowess.elevation <- lowess(gpxAsDataFrame$ele, f = 0.2)$y
-        output$examplePlot2 <- renderPlot({plot(gpxAsDataFrame$speed.km.per.h, type = "l", bty = "n", xaxt = "n", ylab = "Speed (km/h)", xlab = "")
-        lines(gpxAsDataFrame$lowess.speed, col = "green", lwd = 3)
-        legend(x="bottom", legend = c("GPS speed", "Lowess speed"),
-             col = c("black", "green"), lwd = c(1,3), bty = "n")}, width = 600, height = 400)
-      })
+      renderCharts(gpxAsDataFrame)
     }
   })
+
+  renderChooseTrainingToAnalyse <- function () {
+    getTrainingsDataQuery <- paste("select
+                                   activity.name
+                                   from activity
+                                   join user on activity.userId = user.iduser
+                                   where user.login like '", userLogin, "'", sep ="")
+    
+    trainings <- dbGetQuery(dbConnection, getTrainingsDataQuery)
+    
+    output$trainingSelect <- renderUI({
+      selectInput("choosenTraining", "Choose trening to analyse", as.list(trainings$na), 
+                  selected = NULL, multiple = TRUE)
+    })
+    
+    output$selectSingleTraining <- renderUI({
+      selectInput("selectedSingleTraining", "Choose single training to analyse", as.list(trainings$na), 
+                  selected = NULL, multiple = FALSE)
+    })
+  }
+  renderChooseTrainingToAnalyse()
+  
+  observeEvent(input$selectedSingleTraining, {
+    if(!is.null(input$selectedSingleTraining)) {
+      query <- paste("select gpxdata.latitude,
+                   gpxdata.longitude,
+                     gpxdata.distToNextP,
+                     gpxdata.timeToNextP,
+                     gpxdata.speedKmPerH,
+                     activity.name
+                     from gpxdata join activity on gpxdata.idActivity = activity.idActivity
+                     join user on user.iduser = activity.userId
+                     where user.login like '", USER_LOGIN.env$var, "'", "and activity.name like '",
+                     input$selectedSingleTraining[1], "'" , sep="")
+      
+      gpxAsDataFrame <- dbGetQuery(dbConnection, query)
+      gpxAsDataFrame$mean <- with(gpxAsDataFrame, mean(speedKmPerH))
+      #caltulate if speed is above or below mean
+      gpxAsDataFrame$speedComparison <- 0
+      gpxAsDataFrame <- transform(gpxAsDataFrame, speedComparison = ifelse(speedKmPerH > mean, "ABOVE", "BELOW"))
+      renderCharts(gpxAsDataFrame)
+    }
+  })
+  
+  observeEvent(input$choosenTraining, {
+    if(!is.null(input$choosenTraining))
+    {
+      if(length(input$choosenTraining) == 2)
+      {
+        disable("choosenTraining")
+        query <- paste("select gpxdata.latitude,
+                        gpxdata.longitude,
+                        gpxdata.distToNextP,
+                        gpxdata.timeToNextP,
+                        gpxdata.speedKmPerH,
+                        activity.name
+                        from gpxdata join activity on gpxdata.idActivity = activity.idActivity
+                        join user on user.iduser = activity.userId
+                       where user.login like '", USER_LOGIN.env$var, "'", "and activity.name in ('", 
+                       input$choosenTraining[1], "', '", input$choosenTraining[2] , "')", sep="")
+
+        gpxAsDataFrame <- dbGetQuery(dbConnection, query)
+        #calculate speed mean
+        speedMeanFirst <- with(gpxAsDataFrame, mean(speedKmPerH[name == input$choosenTraining[1]]))
+        speedMeanSecond <- with(gpxAsDataFrame, mean(speedKmPerH[name == input$choosenTraining[2]]))
+        gpxAsDataFrame$mean[gpxAsDataFrame$name == input$choosenTraining[1]] <- speedMeanFirst
+        gpxAsDataFrame$mean[gpxAsDataFrame$name == input$choosenTraining[2]] <- speedMeanSecond
+        #caltulate if speed is above or below mean
+        gpxAsDataFrame$speedComparison <- 0
+        gpxAsDataFrame <- transform(gpxAsDataFrame, speedComparison = ifelse(speedKmPerH > mean, "ABOVE", "BELOW"))
+        
+        if(!(is.data.frame(gpxAsDataFrame) && nrow(gpxAsDataFrame)==0)) {
+          # UNUSED JUST FOR EZXAMLPLEEEE
+          # output$examplePlot <- renderPlot({plot(gpxAsDataFrame$longitude, gpxAsDataFrame$latitude,
+          #                                  col = c("green","red")[factor(gpxAsDataFrame$speedComparison)],
+          #                                  pch  = c(1 , 3)[factor(gpxAsDataFrame$name)],
+          #                                  cex = 0.5,
+          #                                  ylab = "latitude", xlab = "longitude")},
+          #                                  #legend('topright', legend = levels(factor(gpxAsDataFrame$name)))},
+          #                                  width = 600, height = 400)
+          #                                  
+          # 
+          # observeEvent(input$speedLowessScale, {
+          #   #chart 2
+          #   speedLowessScale = input$speedLowessScale
+          #   gpxAsDataFrame$lowess.speed <- lowess(gpxAsDataFrame$speedKmPerH, f = speedLowessScale)$y
+          #   # mozna dorobic z wysokoscia nad p morza
+          #   #gpxAsDataFrame$lowess.elevation <- lowess(gpxAsDataFrame$ele, f = 0.2)$y
+          #   output$examplePlot2 <- renderPlot({plot(gpxAsDataFrame$speedKmPerH,
+          #                                           lty=c(1 , 3)[factor(gpxAsDataFrame$name)], 
+          #                                           col = c("blue","red")[factor(gpxAsDataFrame$name)],
+          #                                           type = "l", bty = "n",
+          #                                           xaxt = "n", ylab = "Speed (km/h)", xlab = "")
+          #     lines(gpxAsDataFrame$lowess.speed, col = "green", lwd = 3)
+          #     legend(x="bottom", legend = c("GPS speed", "Lowess speed"),
+          #            col = c("black", "green"), lwd = c(1,3), bty = "n")}, width = 600, height = 400)
+          # })
+        }
+      }
+    }
+  })
+  
 }
 
-
-# renderSingleTrainingCharts<-function(input, output, session, dbConnection){
-#   #create class to store list of .gpx files from database
-#   dataFrameObj <- setRefClass("dataFrameObj", fields = list(dataFrameValues="data.frame"))
-#   gpxAsDataFrameClass <- setRefClass("gpxAsDataFrame", fields = list(values="data.frame"))
-#   
-#   dataFrameRef <- dataFrameObj$new()
-#   gpxAsDataFrame <- gpxAsDataFrameClass$new()
-#   
-#   observeEvent(input$addedFile, {
-#     
-#     addedFile = input$addedFile
-#     if (is.null(addedFile)) {
-#       return(NULL)
-#     }
-#     #inserting data schema
-#     #login <- input$loginValueInput
-#     #filePath <- paste("D:\\\\TemporaryServer\\\\",login,format(Sys.time(), "_%Y%m%d_%H%M%S"),".gpx",sep="")
-#     #TODO input real training name
-#     #name <- "trainingTest"
-#     #insert data into table
-#     ##getInsertQ <- paste("insert into data(login, filePath, name) values(","'",login,"',","'",filePath,"',","'",name,"')",sep="")
-#     ##dbGetQuery(dbConnection, getInsertQ)
-#     analyzerObj <- analyzer$new(addedFile = addedFile)
-#     gpxAsDataFrame$values <- analyzerObj$caltulateGPSData
-#     
-#     gpxValues <- gpxAsDataFrame$values
-#     
-#     #chart example 1
-#     output$examplePlot <- renderPlot({plot(gpxValues$longitude, gpxValues$latitude, 
-#                                            ylab = "latitude", xlab = "longitude")}, width = 600, height = 400)
-#     
-#     ## f = 0.04 need to be changed dinamicly
-#     lowessScale = input$speedLowessScale
-#     gpxValues$lowess.speed <- lowess(gpxValues$speed.km.per.h, f = lowessScale)$y
-#     
-#     #chart example 2
-#     #output$examplePlot2 <- renderPlot({plot(gpxValues$speed.km.per.h, type = "l", bty = "n", xaxt = "n", ylab = "Speed (km/h)", xlab = "")
-#      # lines(gpxValues$lowess.speed, col = "green", lwd = 3)
-#       #legend(x="bottom", legend = c("GPS speed", "Lowess speed"),
-#        #      col = c("black", "green"), lwd = c(1,3), bty = "n")}, width = 600, height = 400)
-#   })
-#   
-#   observeEvent(input$speedLowessScale, {
-#     ## f = 0.04 need to be changed dinamicly
-#     lowessScale = input$speedLowessScale
-#     if(!is.null(gpxAsDataFrame$values)) {
-#       gpxValues <- gpxAsDataFrame$values
-#       
-#       gpxValues$lowess.speed <- lowess(gpxValues$speed.km.per.h, f = lowessScale)$y
-#       
-#       #chart example 2
-#       output$examplePlot2 <- renderPlot({plot(gpxValues$speed.km.per.h, type = "l", bty = "n", xaxt = "n", ylab = "Speed (km/h)", xlab = "")
-#         lines(gpxValues$lowess.speed, col = "green", lwd = 3)
-#         legend(x="bottom", legend = c("GPS speed", "Lowess speed"),
-#                col = c("black", "green"), lwd = c(1,3), bty = "n")}, width = 600, height = 400)
-#     }
-# 
-#   })
-  
-#   observeEvent(input$sendLoginValue, {
-#     loginValue = input$loginValueInput
-#     disable("loginValueInput")
-#     disable("sendLoginValue")
-#     getDataFrameQ <- paste("select * from data where login like '",loginValue,"'",sep="")
-#     dataFrameRef$dataFrameValues <- dbGetQuery(dbConnection, getDataFrameQ)
-#     
-#     output$trainingSelect <- renderUI({
-#       selectInput("dataset", "Wybierz trening do analizy", as.list(dataFrameRef$dataFrameValues$na))
-#     })
-#   })
-#   
-#   renderUpdateDataBtn(input, output, session, dbConnection)
-#   
-# }
-
 renderUpdateDataBtn<-function(input, output, session, dbConnection) {
-
+  
   observeEvent(input$updateDataBtn, {
-    cat("User login is: ")
-    cat(input$userDataLogin)
-    
+    userDataLogin <- USER_LOGIN.env$var
     #put into another .R file
-    browser()
-    tmpGarminServer<-"C:/Users/Kasia/Documents/inzynierka/prototypeWebSite"
-    newFolder <- paste("C:/Users/Kasia/Documents/inzynierka/temporaryServer/", input$userDataLogin, sep="")
-    setwd(tmpGarminServer)
-    files <- list.files() 
-    sapply(files,FUN=function(eachPath){ 
-      file.copy(eachPath, newFolder)
-      #tak foreach - wchodzi tyle razy ile plikow
+    pathToFolderWithUserActivities <- paste("C:/Users/Kasia/Documents/inzynierka/temporaryServer/", userDataLogin, sep="")
+    #take me to place where my folder is
+    setwd(pathToFolderWithUserActivities)
+    files <- list.files()
+    n <- 1
+    sapply(files,FUN=function(singleFile){ 
+      singleFileName <- singleFile[n]
+      singleFilePath <- paste(pathToFolderWithUserActivities, "/", singleFileName, sep="")
+      singleFileDF <- data.frame(name = singleFileName, datapath = singleFilePath)
+      analyzerObj <- analyzer$new(addedFile = singleFileDF, userLogin = userDataLogin)
+      gpxAsDataFrame <- analyzerObj$caltulateGPSData()
       cat("foreach ")
-    }) 
+      n <- n + 1
+    })
+    do.call(file.remove, list(files))
+    renderStatistisc(input, output, session, dbConnection)
+    renderPercentiles(input, output, session, dbConnection)
   })
 }
 
-renderUserData<-function(input, output, session, dbConnection){
-  #TODO validatory poprawnosci przesylanych danych
-  
-  observeEvent(input$userDataApproveButton, {
-    disable("userDataApproveButton")
-    disable("userDataEmail")
-    disable("userDataPassword")
-    disable("userDataLogin")
-    disable("userDataAge")
+renderUserDataRegistration<-function(input, output, session, dbConnection){
+  #TODO validator tylko sprawdza czy taki login jest juz w bazie
+  observeEvent(input$userDataApproveButtonReg, {
+    makeLoginRegistrationFieldDisable()
     
-    email = input$userDataEmail
-    password = input$userDataPassword
-    login = input$userDataLogin
-    age = input$userDataAge
-
-    setCurrentWorkingDctr<-function(login) {
+    email = input$userDataEmailReg
+    password = input$userDataPasswordReg
+    login = input$userDataLoginReg
+    age = input$userDataAgeReg
+    
+    createUserFolderIfDontExist<-function(login) {
       mainDir <- "C:/Users/Kasia/Documents/inzynierka/temporaryServer"
       subDir <- login
-      browser()
       if(dir.exists(file.path(mainDir, subDir))){
         cat("file almost exists")
       }
       else{
         dir.create(file.path(mainDir, subDir))
       }
-      #setwd(file.path(mainDir, subDir))
     }
-    
-    setCurrentWorkingDctr(login)
 
-    #insert data into table
-    checkIfUserJustExist<-function(email) {
-      ifExistQ <- paste("select * from user where email like '",email,"'",sep="")
+    checkIfUserJustExist<-function(login) {
+      ifExistQ <- paste("select login from user where login like '",login,"'",sep="")
       return (nrow(dbGetQuery(dbConnection, ifExistQ)) > 0)
     }
     
-    if(checkIfUserJustExist(email) == FALSE) {
+    if(checkIfUserJustExist(login) == FALSE) {
+      createUserFolderIfDontExist(login)
       getInsertQ <- paste("insert into user(email, password, login, age) values(","'",email,"',","'",password,"',","'",login,"',","'",age,"')",sep="")
       dbGetQuery(dbConnection, getInsertQ)
+      USER_LOGIN.env$var <- login
+      output$registrationProcessMessage <- renderText({ 
+        "<font size='3' color='green'>Registration was succesfull!</font>"
+      })
+      renderSingleTrainingCharts(input, output, session, dbConnection)
+      renderUpdateDataBtn(input, output, session, dbConnection)
+      renderStatistisc(input, output, session, dbConnection)
+      renderPercentiles(input, output, session, dbConnection)
+    }
+    else {
+      makeLoginRegistrationFieldEnable()
+      output$registrationProcessMessage <- renderText({ 
+        "<font size='3' color='red'>Wrong registration data!</font>"
+      })
     }
   })
 }
 
-renderNews<-function(input, output, session, dbConnection){
+renderUserDataLogIn<-function(input, output, session, dbConnection){
   
+  #TODO validatory poprawnosci przesylanych danych
+  observeEvent(input$userDataApproveButtonLog, {
+    
+    makeLoginRegistrationFieldDisable()
+    
+    login = input$userDataLoginLog
+    password = input$userDataPasswordLog
+    
+    validateUser<-function(login, password) {
+      userValidation <- paste("select * from user where login like '",login,"'", 
+                        "and password like '", password, "'",sep="")
+      return (nrow(dbGetQuery(dbConnection, userValidation)) > 0)
+    }
+    
+    if(validateUser(login, password) == FALSE) {
+      output$loginProcessMessage <- renderText({ 
+        "<font size='3' color='red'>Wrong login data!</font>"
+      })
+      makeLoginRegistrationFieldEnable()
+    }
+    else {
+      USER_LOGIN.env$var <- login
+      output$loginProcessMessage <- renderText({ 
+        "<font size='3' color='greeb'>Login was succesfull!</font>"
+      })
+      renderSingleTrainingCharts(input, output, session, dbConnection)
+      renderUpdateDataBtn(input, output, session, dbConnection)
+      renderStatistisc(input, output, session, dbConnection)
+      renderPercentiles(input, output, session, dbConnection)
+    }
+  })
 }
 
 renderStatistisc<-function(input, output, session, dbConnection) {
-  
   #TODO - pobierz dane tylko zalogowanego uzytkownika - where id = zalogowanyUzytkownik
-  getActivitiesDataQuery <- "select 
+  userLogin <- USER_LOGIN.env$var
+  getActivitiesDataQuery <- paste("select 
                              activity.date,
                              activity.timeLasting,
                              activity.burnCalories,
@@ -201,7 +304,9 @@ renderStatistisc<-function(input, output, session, dbConnection) {
                              activity.userId,
                              activity.distance
                              from activity join activitytype 
-                             on activity.activityType = activitytype.idactivityType;"
+                             on activity.activityType = activitytype.idactivityType
+                             join user on activity.userId = user.iduser
+                             where user.login like '", userLogin, "'", sep ="")
   
   activitiesData <- dbGetQuery(dbConnection, getActivitiesDataQuery)
   #sort data by activity date
@@ -256,7 +361,9 @@ renderPercentiles<-function(input, output, session, dbConnection) {
                                                     FUN=sum), c("date", "userId", "burnCalories", "timeLasting", "distance"))
     
     #change userId to input$userId
-    currentUserData <- subset(dataToCaltulatePercentile, userId == 10)
+    getIdUser <- paste("select iduser from user where login like '", USER_LOGIN.env$var, "'", sep="")
+    userIdValue <- as.numeric(dbGetQuery(dbConnection, getIdUser))
+    currentUserData <- subset(dataToCaltulatePercentile, userId == userIdValue, select=date:distance)
 
     switch(percentileValue,
            "0" = {    
@@ -347,11 +454,12 @@ function(input, output, session) {
   dbConnection2 = dbConnect(MySQL(), user='admin', password='admin', dbname='analyzer_db_2', host='localhost')
   
   setGlobalEnv()
-  renderSingleTrainingCharts(input, output, session, dbConnection2)
-  renderStatistisc(input, output, session, dbConnection2)
-  renderPercentiles(input, output, session, dbConnection2)
-  renderUserData(input, output, session, dbConnection2)
-  renderNews(input, output, session, dbConnection2)
+  #renderSingleTrainingCharts(input, output, session, dbConnection2)
+  #renderUpdateDataBtn(input, output, session, dbConnection2)
+  #renderStatistisc(input, output, session, dbConnection2)
+  #renderPercentiles(input, output, session, dbConnection2)
+  renderUserDataRegistration(input, output, session, dbConnection2)
+  renderUserDataLogIn(input, output, session, dbConnection2)
   
   session$onSessionEnded(function(){
     cat("close connections")

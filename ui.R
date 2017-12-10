@@ -5,30 +5,39 @@ library(shinyjs)
 renderSingleTrainingAnalyzer<-function()
 {
   fluidRow(
-    column(4,
-           #login input
-           textInput("loginValueInput", "Podaj swoj login"),
-           actionButton("sendLoginValue", "Zatwierdz"),
-           hr(),
-           #file input
-           fileInput("addedFile", label = "Dodaj trening do analizy", multiple = FALSE, accept = NULL, width = NULL,
-                     buttonLabel = "Browse...", placeholder = "No file selected"),
-           hr(),
-           #data actualization
-           HTML("<label>Zaktualizuj dane automatycznie</label>"),
-           actionButton("updateDataBtn", "Aktualizuj"),
-           hr(),
-           #input trainings to analyze
-           uiOutput("trainingSelect"),
-           br(),
-           h6("lista dodanych treningow do analizy ..."),
-           sliderInput("speedLowessScale", "Lowess value", 0.01, 1, 0.01, step = 0.01)
-    ),
-    column(8,
-           h4("Example 1"),
-           plotOutput("examplePlot", inline = TRUE),
-           h4("Example 2"),
-           plotOutput("examplePlot2", inline = TRUE)
+      column(12,
+         HTML("<center><strong>ANALYZE SINGLE TRAINING</strong></center>"),
+         fluidRow(
+            column(2, 
+                   #file input
+                   fileInput("addedFile", label = "Dodaj trening do analizy", multiple = FALSE, accept = NULL, width = NULL,
+                             buttonLabel = "Browse...", placeholder = "No file selected"),
+                   hr(),
+                   #data actualization
+                   HTML("<label>Zaktualizuj dane automatycznie</label>"),
+                   actionButton("updateDataBtn", "Aktualizuj"),
+                   br(),br(),
+                   hr(),
+                   #input single training to analyze
+                   uiOutput("selectSingleTraining"),
+                   br(),
+                   sliderInput("speedLowessScale", "Lowess value", 0.01, 1, 0.01, step = 0.01)
+            ),
+            column(5,
+                   h4("Route on the map"),
+                   plotOutput("examplePlot", inline = TRUE)
+                   
+            ),
+            column(5,
+                   h4("Speed"),
+                   plotOutput("examplePlot2", inline = TRUE)
+            )
+      ),
+      HTML("<center>ANALYZE TWO TRAININGS</center>"),
+      fluidRow(
+        HTML("<label>Compare two trainings</label>"),
+        uiOutput("trainingSelect")
+      )
     )
   )
 }
@@ -55,11 +64,27 @@ renderStatistics<-function(){
 renderUserData<-function(){
   fluidRow(
     column(4,
-           textInput("userDataEmail", "Podaj e-mail"),
-           textInput("userDataPassword", "Podaj haslo"),
-           textInput("userDataLogin", "Podaj login"),
-           textInput("userDataAge", "Podaj wiek"),
-           actionButton("userDataApproveButton", "Zatwierdz"),
+           HTML("<label>LOG IN</label>"),
+           hr(),
+           textInput("userDataLoginLog", "Podaj login"),
+           textInput("userDataPasswordLog", "Podaj haslo"),
+           actionButton("userDataApproveButtonLog", "Zatwierdz"),
+           br(),br(),
+           htmlOutput("loginProcessMessage"),
+           hr()
+    ),
+    column(4
+    ),
+    column(4,
+           HTML("<label>REGISTRATION</label>"),
+           hr(),
+           textInput("userDataEmailReg", "Podaj e-mail"),
+           textInput("userDataPasswordReg", "Podaj haslo"),
+           textInput("userDataLoginReg", "Podaj login"),
+           textInput("userDataAgeReg", "Podaj wiek"),
+           actionButton("userDataApproveButtonReg", "Zatwierdz"),
+           br(),br(),
+           htmlOutput("registrationProcessMessage"),
            hr()
     )
   )
