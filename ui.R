@@ -33,10 +33,20 @@ renderSingleTrainingAnalyzer<-function()
                    plotOutput("examplePlot2", inline = TRUE)
             )
       ),
-      HTML("<center>ANALYZE TWO TRAININGS</center>"),
+      HTML("<center><strong>ANALYZE TWO TRAININGS</strong></center>"),
       fluidRow(
         HTML("<label>Compare two trainings</label>"),
-        uiOutput("trainingSelect")
+        uiOutput("trainingSelect"),
+        #get this into one row next to other
+        selectInput("AxisY", "Axis Y:",
+                    c("Time percent" = "timePercent",
+                      "Distance percent" = "distancePercent"),
+                    selected = "timePercent"),
+        selectInput("AxisX", "Axis X:",
+                    c("Speed" = "speedKmPerH",
+                      "Rate" = "rate"),
+                    selected = "speedKmPerH"),
+        plotOutput(outputId = "percentPlot")
       )
     )
   )

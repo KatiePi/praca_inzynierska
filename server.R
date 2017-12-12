@@ -68,14 +68,16 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
       return(NULL)
      }
     # Object from Analyzer.R
-    analyzerObj <- analyzer$new(addedFile = addedFile, userLogin <- userLogin)
+    analyzerObj <- analyzer$new(addedFile = addedFile, userLogin = userLogin)
     gpxAsDataFrame <- analyzerObj$caltulateGPSData()
     gpxAsDataFrame$mean <- with(gpxAsDataFrame, mean(speedKmPerH))
     #caltulate if speed is above or below mean
     gpxAsDataFrame$speedComparison <- 0
     gpxAsDataFrame <- transform(gpxAsDataFrame, speedComparison = ifelse(speedKmPerH > mean, "ABOVE", "BELOW"))
+    renderChooseTrainingToAnalyse()
     renderStatistisc(input, output, session, dbConnection)
     renderPercentiles(input, output, session, dbConnection)
+    renderChooseTrainingToAnalyse()
     
     if(!(is.data.frame(gpxAsDataFrame) && nrow(gpxAsDataFrame)==0)) {
       renderCharts(gpxAsDataFrame)
@@ -83,7 +85,8 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
   })
 
   renderChooseTrainingToAnalyse <- function () {
-    getTrainingsDataQuery <- paste("select
+    getTrainingsDataQuery <- paste("select distinct
+                                   CONCAT(activity.name, ', ', activity.date) as fullName,
                                    activity.name
                                    from activity
                                    join user on activity.userId = user.iduser
@@ -91,101 +94,20 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
     
     trainings <- dbGetQuery(dbConnection, getTrainingsDataQuery)
     
-    output$trainingSelect <- renderUI({
-      selectInput("choosenTraining", "Choose trening to analyse", as.list(trainings$na), 
-                  selected = NULL, multiple = TRUE)
-    })
-    
-    output$selectSingleTraining <- renderUI({
-      selectInput("selectedSingleTraining", "Choose single training to analyse", as.list(trainings$na), 
-                  selected = NULL, multiple = FALSE)
-    })
+    if(is.data.frame(trainings) && nrow(trainings)!=0) {
+      
+      output$trainingSelect <- renderUI({
+        selectInput("choosenTraining", "Choose trening to analyse", as.list(trainings$fullName), 
+                    selected = NULL, multiple = TRUE)
+      })
+      
+      output$selectSingleTraining <- renderUI({
+        selectInput("selectedSingleTraining", "Choose single training to analyse", as.list(trainings$fullName), 
+                    selected = NULL, multiple = FALSE)
+      })
+    }
   }
   renderChooseTrainingToAnalyse()
-  
-  observeEvent(input$selectedSingleTraining, {
-    if(!is.null(input$selectedSingleTraining)) {
-      query <- paste("select gpxdata.latitude,
-                   gpxdata.longitude,
-                     gpxdata.distToNextP,
-                     gpxdata.timeToNextP,
-                     gpxdata.speedKmPerH,
-                     activity.name
-                     from gpxdata join activity on gpxdata.idActivity = activity.idActivity
-                     join user on user.iduser = activity.userId
-                     where user.login like '", USER_LOGIN.env$var, "'", "and activity.name like '",
-                     input$selectedSingleTraining[1], "'" , sep="")
-      
-      gpxAsDataFrame <- dbGetQuery(dbConnection, query)
-      gpxAsDataFrame$mean <- with(gpxAsDataFrame, mean(speedKmPerH))
-      #caltulate if speed is above or below mean
-      gpxAsDataFrame$speedComparison <- 0
-      gpxAsDataFrame <- transform(gpxAsDataFrame, speedComparison = ifelse(speedKmPerH > mean, "ABOVE", "BELOW"))
-      renderCharts(gpxAsDataFrame)
-    }
-  })
-  
-  observeEvent(input$choosenTraining, {
-    if(!is.null(input$choosenTraining))
-    {
-      if(length(input$choosenTraining) == 2)
-      {
-        disable("choosenTraining")
-        query <- paste("select gpxdata.latitude,
-                        gpxdata.longitude,
-                        gpxdata.distToNextP,
-                        gpxdata.timeToNextP,
-                        gpxdata.speedKmPerH,
-                        activity.name
-                        from gpxdata join activity on gpxdata.idActivity = activity.idActivity
-                        join user on user.iduser = activity.userId
-                       where user.login like '", USER_LOGIN.env$var, "'", "and activity.name in ('", 
-                       input$choosenTraining[1], "', '", input$choosenTraining[2] , "')", sep="")
-
-        gpxAsDataFrame <- dbGetQuery(dbConnection, query)
-        #calculate speed mean
-        speedMeanFirst <- with(gpxAsDataFrame, mean(speedKmPerH[name == input$choosenTraining[1]]))
-        speedMeanSecond <- with(gpxAsDataFrame, mean(speedKmPerH[name == input$choosenTraining[2]]))
-        gpxAsDataFrame$mean[gpxAsDataFrame$name == input$choosenTraining[1]] <- speedMeanFirst
-        gpxAsDataFrame$mean[gpxAsDataFrame$name == input$choosenTraining[2]] <- speedMeanSecond
-        #caltulate if speed is above or below mean
-        gpxAsDataFrame$speedComparison <- 0
-        gpxAsDataFrame <- transform(gpxAsDataFrame, speedComparison = ifelse(speedKmPerH > mean, "ABOVE", "BELOW"))
-        
-        if(!(is.data.frame(gpxAsDataFrame) && nrow(gpxAsDataFrame)==0)) {
-          # UNUSED JUST FOR EZXAMLPLEEEE
-          # output$examplePlot <- renderPlot({plot(gpxAsDataFrame$longitude, gpxAsDataFrame$latitude,
-          #                                  col = c("green","red")[factor(gpxAsDataFrame$speedComparison)],
-          #                                  pch  = c(1 , 3)[factor(gpxAsDataFrame$name)],
-          #                                  cex = 0.5,
-          #                                  ylab = "latitude", xlab = "longitude")},
-          #                                  #legend('topright', legend = levels(factor(gpxAsDataFrame$name)))},
-          #                                  width = 600, height = 400)
-          #                                  
-          # 
-          # observeEvent(input$speedLowessScale, {
-          #   #chart 2
-          #   speedLowessScale = input$speedLowessScale
-          #   gpxAsDataFrame$lowess.speed <- lowess(gpxAsDataFrame$speedKmPerH, f = speedLowessScale)$y
-          #   # mozna dorobic z wysokoscia nad p morza
-          #   #gpxAsDataFrame$lowess.elevation <- lowess(gpxAsDataFrame$ele, f = 0.2)$y
-          #   output$examplePlot2 <- renderPlot({plot(gpxAsDataFrame$speedKmPerH,
-          #                                           lty=c(1 , 3)[factor(gpxAsDataFrame$name)], 
-          #                                           col = c("blue","red")[factor(gpxAsDataFrame$name)],
-          #                                           type = "l", bty = "n",
-          #                                           xaxt = "n", ylab = "Speed (km/h)", xlab = "")
-          #     lines(gpxAsDataFrame$lowess.speed, col = "green", lwd = 3)
-          #     legend(x="bottom", legend = c("GPS speed", "Lowess speed"),
-          #            col = c("black", "green"), lwd = c(1,3), bty = "n")}, width = 600, height = 400)
-          # })
-        }
-      }
-    }
-  })
-  
-}
-
-renderUpdateDataBtn<-function(input, output, session, dbConnection) {
   
   observeEvent(input$updateDataBtn, {
     userDataLogin <- USER_LOGIN.env$var
@@ -207,6 +129,120 @@ renderUpdateDataBtn<-function(input, output, session, dbConnection) {
     do.call(file.remove, list(files))
     renderStatistisc(input, output, session, dbConnection)
     renderPercentiles(input, output, session, dbConnection)
+    renderChooseTrainingToAnalyse()
+  })
+  
+  observeEvent(input$selectedSingleTraining, {
+    if(!is.null(input$selectedSingleTraining)) {
+      query <- paste("select gpxdata.latitude,
+                   gpxdata.longitude,
+                     gpxdata.distToNextP,
+                     gpxdata.timeToNextP,
+                     gpxdata.speedKmPerH,
+                     activity.name
+                     from gpxdata join activity on gpxdata.idActivity = activity.idActivity
+                     join user on user.iduser = activity.userId
+                     where user.login like '", USER_LOGIN.env$var, "'", "and CONCAT(activity.name, ', ', activity.date) like '",
+                     input$selectedSingleTraining[1], "'" , sep="")
+      
+      gpxAsDataFrame <- dbGetQuery(dbConnection, query)
+      gpxAsDataFrame$mean <- with(gpxAsDataFrame, mean(speedKmPerH))
+      #caltulate if speed is above or below mean
+      gpxAsDataFrame$speedComparison <- 0
+      gpxAsDataFrame <- transform(gpxAsDataFrame, speedComparison = ifelse(speedKmPerH > mean, "ABOVE", "BELOW"))
+      renderCharts(gpxAsDataFrame)
+    }
+  })
+  
+  observeEvent(input$choosenTraining, {
+    if(!is.null(input$choosenTraining))
+    {
+      if(length(input$choosenTraining) == 2)
+      {
+        browser()
+        disable("choosenTraining")
+        query <- paste("select gpxdata.latitude,
+                        gpxdata.longitude,
+                        gpxdata.distToNextP,
+                        gpxdata.timeToNextP,
+                        gpxdata.speedKmPerH,
+                        CONCAT(activity.name, ', ', activity.date) as name,
+                        gpxdata.rate
+                        from gpxdata join activity on gpxdata.idActivity = activity.idActivity
+                        join user on user.iduser = activity.userId
+                       where user.login like '", USER_LOGIN.env$var, "'", "and CONCAT(activity.name, ', ', activity.date) in ('", 
+                       # input$choosenTraining[1], "', '", input$choosenTraining[2] , "')", sep="")
+                       input$choosenTraining[1], "')", sep="")
+
+        gpxAsDataFrame <- dbGetQuery(dbConnection, query)
+        
+        gpxAsDataFrame$speedKmPerH <- round(gpxAsDataFrame$speedKmPerH)
+        gpxAsDataFrame$rate <- round(gpxAsDataFrame$rate, digits = 1)
+        
+  #calculate SPEED
+        totalDistance <- aggregate(distToNextP~speedKmPerH,gpxAsDataFrame,sum)
+        totalTime <- aggregate(timeToNextP~speedKmPerH,gpxAsDataFrame,sum)
+        #convert seconds to minuters and round
+        totalTime$timeToNextP <- ifelse(totalTime$timeToNextP ==0, 
+               0, 0.6 * (totalTime$timeToNextP/60 - floor(totalTime$timeToNextP/60)) + floor(totalTime$timeToNextP/60))
+        
+        timeSum <- sum(totalTime$timeToNextP)
+        totalTime$timePercent <- ((totalTime$timeToNextP)/timeSum) * 100 
+        
+        distanceSum <- sum(totalDistance$distToNextP)
+        totalDistance$distancePercent <- ((totalDistance$distToNextP)/distanceSum) * 100 
+        
+        testDistance <- sum(totalDistance$distancePercent)
+        testTime <- sum(totalTime$timePercent)
+        
+        totalSpeed <- merge(totalDistance,totalTime,by="speedKmPerH")
+        # END calculate SPEED
+        
+  #calculate RATE
+        totalDistance <- aggregate(distToNextP~rate,gpxAsDataFrame,sum)
+        totalTime <- aggregate(timeToNextP~rate,gpxAsDataFrame,sum)
+        #convert seconds to minuters and round
+        totalTime$timeToNextP <- ifelse(totalTime$timeToNextP ==0, 
+                                        0, 0.6 * (totalTime$timeToNextP/60 - floor(totalTime$timeToNextP/60)) + floor(totalTime$timeToNextP/60))
+        
+        timeSum <- sum(totalTime$timeToNextP)
+        totalTime$timePercent <- ((totalTime$timeToNextP)/timeSum) * 100 
+        
+        distanceSum <- sum(totalDistance$distToNextP)
+        totalDistance$distancePercent <- ((totalDistance$distToNextP)/distanceSum) * 100 
+        
+        testDistance <- sum(totalDistance$distancePercent)
+        testTime <- sum(totalTime$timePercent)
+        
+        totalRate <- merge(totalDistance,totalTime,by="rate")
+        #END calculate RATE
+        
+        if(!(is.data.frame(gpxAsDataFrame) && nrow(gpxAsDataFrame)==0)) {
+          output$percentPlot <- renderPlot({
+            if(input$AxisX == "speedKmPerH") {
+                selectedColumnTest <- totalSpeed[,c(input$AxisY)]
+                selectedColumn <- totalTime$timePercent
+  
+                interactivePlot <- ggplot(totalSpeed, aes(x=format(speedKmPerH), y=selectedColumnTest
+                )) +
+                  geom_bar(stat="identity", position = 'dodge')
+  
+                print(interactivePlot)
+            }
+            else {
+                selectedColumnTest <- totalRate[,c(input$AxisY)]
+                selectedColumn <- totalRate$timePercent
+                
+                interactivePlot <- ggplot(totalRate, aes(x=format(rate), y=selectedColumnTest
+                )) +
+                  geom_bar(stat="identity", position = 'dodge')
+                
+                print(interactivePlot)
+            }
+          })
+        }
+      }
+    }
   })
 }
 
@@ -245,7 +281,6 @@ renderUserDataRegistration<-function(input, output, session, dbConnection){
         "<font size='3' color='green'>Registration was succesfull!</font>"
       })
       renderSingleTrainingCharts(input, output, session, dbConnection)
-      renderUpdateDataBtn(input, output, session, dbConnection)
       renderStatistisc(input, output, session, dbConnection)
       renderPercentiles(input, output, session, dbConnection)
     }
@@ -286,7 +321,6 @@ renderUserDataLogIn<-function(input, output, session, dbConnection){
         "<font size='3' color='greeb'>Login was succesfull!</font>"
       })
       renderSingleTrainingCharts(input, output, session, dbConnection)
-      renderUpdateDataBtn(input, output, session, dbConnection)
       renderStatistisc(input, output, session, dbConnection)
       renderPercentiles(input, output, session, dbConnection)
     }
@@ -454,10 +488,6 @@ function(input, output, session) {
   dbConnection2 = dbConnect(MySQL(), user='admin', password='admin', dbname='analyzer_db_2', host='localhost')
   
   setGlobalEnv()
-  #renderSingleTrainingCharts(input, output, session, dbConnection2)
-  #renderUpdateDataBtn(input, output, session, dbConnection2)
-  #renderStatistisc(input, output, session, dbConnection2)
-  #renderPercentiles(input, output, session, dbConnection2)
   renderUserDataRegistration(input, output, session, dbConnection2)
   renderUserDataLogIn(input, output, session, dbConnection2)
   

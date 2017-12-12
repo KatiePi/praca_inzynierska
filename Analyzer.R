@@ -54,6 +54,7 @@ analyzer$methods(
                     c(as.numeric(row["latitude"]), as.numeric(row["longitude"])),
                     lonlat = T)
     })
+    browser()
     # Set next point time
     gpxAsDataFrame$timeNextP <- setNextPointValue(gpxAsDataFrame$time, -1)
     # Calculate time difference between two times
@@ -61,6 +62,9 @@ analyzer$methods(
     # Calculate speed
     gpxAsDataFrame$speedKmPerH <- ((gpxAsDataFrame$distToNextP / gpxAsDataFrame$timeToNextP) * 3.6)
     gpxAsDataFrame$speedKmPerH <- ifelse(is.na(gpxAsDataFrame$speedKmPerH), 0, gpxAsDataFrame$speedKmPerH)
+    #rate - km na min
+    gpxAsDataFrame$rate <- ifelse(gpxAsDataFrame$speedKmPerH ==0, 
+                                  0, 0.6 * (60/gpxAsDataFrame$speedKmPerH - floor(60/gpxAsDataFrame$speedKmPerH)) + floor(60/gpxAsDataFrame$speedKmPerH))
     
     #Prepare data to activity table
     getIdUser <- paste("select iduser from user where login like '", userLogin, "'", sep="")
@@ -113,8 +117,8 @@ analyzer$methods(
     dbWriteTable(dbConnection, "activity", activitydataTable, append=TRUE, row.names = FALSE)
 
     getMaxIdActivity <- "select 
-                              max(activity.idActivity)
-                              from activity"
+                         max(activity.idActivity)
+                         from activity"
     
     idActivity <- as.numeric(dbGetQuery(dbConnection, getMaxIdActivity))
     gpxAsDataFrame$idActivity <- idActivity
