@@ -54,6 +54,7 @@ renderSingleTrainingAnalyzer<-function()
 
 renderStatistics<-function(){
   fluidRow(
+    HTML("<label>STATISTICS</label>"),
     selectInput("statisticType", "Statistic type:",
                 c("Monthly" = "%Y-%m",
                   "Yearly" = "%Y"),
@@ -67,7 +68,31 @@ renderStatistics<-function(){
                 c("Stack" = "stack",
                   "Dodge" = "dodge"),
                 selected = "stack"),
-    plotOutput(outputId = "statisticPlot")
+    plotOutput(outputId = "statisticPlot"),
+    HTML("<label>COMPARE YOUR SPEED/RATE</label>"),
+    selectInput("activityType", "Activity type:",
+                c("Running" = "RUNNING",
+                  "Riding" = "BIKE_RIDING",
+                  "Swimming" = "SWIMMING"),
+                selected = "RUNNING"),
+    selectInput("AxisYMeOther", "Axis Y:",
+                c("Time percent" = "timePercent",
+                  "Distance percent" = "distancePercent"),
+                selected = "timePercent"),
+    selectInput("AxisXMeOther", "Axis X:",
+                c("Speed" = "speedKmPerH",
+                  "Rate" = "rate"),
+                selected = "speedKmPerH"),
+    selectInput("dataType", "Data type:",
+                c("Month" = "MONTH",
+                  "Year" = "YEAR"),
+                selected = "MONTH"),
+    uiOutput("selectedDates"),
+    selectInput("scaleOfComparison", "Scale of comparison:",
+                c("Just me" = "ME",
+                  "All people" = "ALL"),
+                selected = "ME"),
+    plotOutput(outputId = "statisticSpeedRate")
   )
 }
 
@@ -102,6 +127,11 @@ renderUserData<-function(){
 
 renderComparisionSection<-function(){
   fluidRow(
+    selectInput("percentileActivityType", "Activity type:",
+                c("Running" = "RUNNING",
+                  "Bike riding" = "BIKE_RIDING",
+                  "Swimming" = "SWIMMING"),
+                selected = "RUNNING"),
     selectInput("percentileDateType", "Date scale:",
                 c("Monthly" = "%Y-%m",
                   "Yearly" = "%Y"),

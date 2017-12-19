@@ -24,10 +24,10 @@ analyzer$methods(
   },
   
   caltulateGPSData = function() {
+    options(digits = 10)
     # Function to load data from gpx file into dataframe
     fileDataPath <- as.character(addedFile$datapath)
     fileName <- as.character(addedFile$name)
-    
     parsedGPX <- htmlTreeParse(fileDataPath, useInternalNodes = T)
     # Get values from parsed GPX files variables
     gpsValues <- xpathSApply(parsedGPX, path = "//trkpt", xmlAttrs)
@@ -42,9 +42,8 @@ analyzer$methods(
     gpxAsDataFrame$time <- strptime(gpxAsDataFrame$time, format = "%Y-%m-%dT%H:%M:%OS")
     
     # Remove temporary variables
-    ##rm(list=c("ele", "lat", "lon", "parsedGPX", "time", "gpsValues"))
     rm(list=c("ele", "lat", "lon", "time", "gpsValues"))
-    
+
     # Set next point position values
     gpxAsDataFrame$latitudeNextP <- setNextPointValue(gpxAsDataFrame$latitude, -1)
     gpxAsDataFrame$longitudeNextP <- setNextPointValue(gpxAsDataFrame$longitude, -1)
@@ -54,7 +53,27 @@ analyzer$methods(
                     c(as.numeric(row["latitude"]), as.numeric(row["longitude"])),
                     lonlat = T)
     })
-    browser()
+    #CLEAN DATA BY DISTANCE BETWEEN POINTS
+    # remove row if data in column "distToNextP" is null
+    gpxAsDataFrame <- gpxAsDataFrame[!is.na(gpxAsDataFrame$distToNextP),]
+    distToNextP_mean <- mean(gpxAsDataFrame$distToNextP, na.rm=TRUE)
+    n <- nrow(gpxAsDataFrame)
+    gpxAsDataFrame$h <- 1/n + (gpxAsDataFrame$distToNextP - distToNextP_mean)^2/sum((gpxAsDataFrame$distToNextP - distToNextP_mean)^2)
+    # remove values if they have influence bigger than 0.015
+    gpxAsDataFrame <- gpxAsDataFrame[(gpxAsDataFrame$h<0.015),]
+    gpxAsDataFrame <- within(gpxAsDataFrame, rm(h))
+    
+    # Set NEW next point position values
+    gpxAsDataFrame$latitudeNextP <- setNextPointValue(gpxAsDataFrame$latitude, -1)
+    gpxAsDataFrame$longitudeNextP <- setNextPointValue(gpxAsDataFrame$longitude, -1)
+    # Calculate distance between two points
+    gpxAsDataFrame$distToNextP <- apply(gpxAsDataFrame, 1, FUN = function (row) {
+      pointDistance(c(as.numeric(row["latitudeNextP"]),as.numeric(row["longitudeNextP"])),
+                    c(as.numeric(row["latitude"]), as.numeric(row["longitude"])),
+                    lonlat = T)
+    })
+    gpxAsDataFrame <- gpxAsDataFrame[!is.na(gpxAsDataFrame$distToNextP),]
+    
     # Set next point time
     gpxAsDataFrame$timeNextP <- setNextPointValue(gpxAsDataFrame$time, -1)
     # Calculate time difference between two times
@@ -73,7 +92,7 @@ analyzer$methods(
     activityDate <- strptime(activityDate, format = "%Y-%m-%d")
     activityName <- xpathSApply(parsedGPX, path = "//trk/name", xmlValue)
     #change seconds to minutes
-    activityTimeLasting <-  round(as.numeric(difftime(tail(gpxAsDataFrame$time, n=1), head(gpxAsDataFrame$time,1))))
+    activityTimeLasting <-  round(as.numeric(difftime(tail(gpxAsDataFrame$time, n=1), head(gpxAsDataFrame$time,1), units = "mins")))
     activityType <- as.character(xpathSApply(parsedGPX, path = "//trk/type", xmlValue))
     
     if(!identical(activityType, character(0))) {
