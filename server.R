@@ -382,7 +382,6 @@ renderStatistisc<-function(input, output, session, dbConnection) {
   dataTable <- dbGetQuery(dbConnection, query)
 
   getFilteredData <- function(activityType, dataType) {
-    browser()
     filteredData <- dataTable[dataTable$activityType == activityType, ]
     filteredData$date <- format(as.Date(filteredData$date, format="%Y-%m-%d"), dataType)
     return (filteredData)
@@ -452,10 +451,9 @@ renderStatistisc<-function(input, output, session, dbConnection) {
         totalSpeed <- merge(totalDistance,totalTime,by=c("speedKmPerH", "date"))
         
         # Remove row if percent is smaller than 1%
-        browser()
         totalSpeed <- totalSpeed[(totalSpeed$distancePercent>0.5),]
         totalSpeed <- totalSpeed[(totalSpeed$timePercent>0.5),]
-        print("sth")
+
         # END calculate SPEED
 
         #calculate RATE
@@ -475,7 +473,6 @@ renderStatistisc<-function(input, output, session, dbConnection) {
         testTime <- sum(totalTime$timePercent)
 
         totalRate <- merge(totalDistance,totalTime,by=c("rate", "date"))
-        browser()
         # Remove row if percent is smaller than 1%
         totalRate <- totalRate[(totalRate$distancePercent>0.5),]
         totalRate <- totalRate[(totalRate$timePercent>0.5),]
@@ -581,7 +578,6 @@ renderPercentiles<-function(input, output, session, dbConnection) {
     percentilesGroup <- join_all(list(burnCaloriesPercentile,timeLastingPercentile,distancePercentile), by="date")
     
     #get percentiles connected just with current user
-    browser()
     percentilesGroup <- percentilesGroup[(percentilesGroup$date %in% currentUserData$date),]
     percentilesGroup$date <- as.Date(percentilesGroup$date, "%Y-%m-%d")
     currentUserData$date <- as.Date(currentUserData$date, "%Y-%m-%d")
@@ -658,6 +654,7 @@ renderPercentiles<-function(input, output, session, dbConnection) {
         gpxAsDataFrame <- dbGetQuery(dbConnection, query)
         allData <- rbind(allData, gpxAsDataFrame)
       }
+    allData <- transform(allData, login = ifelse(login == USER_LOGIN.env$var, "Me", "Others"))
     return (allData)
   }
   
@@ -668,25 +665,24 @@ renderPercentiles<-function(input, output, session, dbConnection) {
   }
 
   observeEvent(c(input$activityTypePercentile, input$dataTypePercentile), {
-    browser()
     #setting interactive plot properties
     activityType <- input$activityTypePercentile
     dataType <- input$dataTypePercentile
 
     switch(dataType,
-           "MONTH" = {browser()
+           "MONTH" = {
              dataTable <- getMonthYearData(uniqueMonths)
              
              filteredData <- getFilteredData(activityType, "%Y-%m", dataTable)
              output$selectedSingleDate <- renderUI({
-               selectInput("selectedSingleDate", "Choose months to analyze", as.list(filteredData$date))
+               selectInput("selectedSingleDate", "Choose months to analyze", as.list(filteredData$date), selected = NULL)
              })
            },
            "YEAR" = {
              dataTable <- getMonthYearData(uniqueYears)
              filteredData <- getFilteredData(activityType, "%Y", dataTable)
              output$selectedSingleDate <- renderUI({
-               selectInput("selectedDates", "Choose year to analyze", as.list(filteredData$date))
+               selectInput("selectedSingleDate", "Choose year to analyze", as.list(filteredData$date), selected = NULL)
              })
            }
     )
@@ -694,10 +690,9 @@ renderPercentiles<-function(input, output, session, dbConnection) {
   )
   
   observeEvent(input$selectedSingleDate, {
-    browser()
-    print(selectedSingleDate)
-    if(!is.null(input$selectedSingleDate)) {
-      browser()
+    print(input$selectedSingleDate)
+    if(input$selectedSingleDate != '') {
+      selectedSingleDate <- input$selectedSingleDate
       activityType <- input$activityTypePercentile
       dataType <- input$dataTypePercentile
       
@@ -705,113 +700,87 @@ renderPercentiles<-function(input, output, session, dbConnection) {
              "MONTH" = {
                dataTable <- getMonthYearData(uniqueMonths)
                filteredData <- getFilteredData(activityType, "%Y-%m", dataTable)
+               filteredData <- filteredData[(filteredData$date==selectedSingleDate),]
              },
              "YEAR" = {
                dataTable <- getMonthYearData(uniqueYears)
                filteredData <- getFilteredData(activityType, "%Y", dataTable)
+               filteredData <- filteredData[(filteredData$date==selectedSingleDate),]
              }
       )
       print(filteredData)
+      filteredData$speedKmPerH <- round(filteredData$speedKmPerH)
+      filteredData$rate <- round(filteredData$rate, digits = 1)
+      
+      #calculate SPEED
+      totalDistance <- aggregate(distToNextP~speedKmPerH + login,filteredData,sum)
+      totalTime <- aggregate(timeToNextP~speedKmPerH + login,filteredData,sum)
+      #convert seconds to minuters and round
+      totalTime$timeToNextP <- ifelse(totalTime$timeToNextP ==0, 
+                                      0, 0.6 * (totalTime$timeToNextP/60 - floor(totalTime$timeToNextP/60)) + floor(totalTime$timeToNextP/60))
+      
+      timeSum <- sum(totalTime$timeToNextP)
+      totalTime$timePercent <- ((totalTime$timeToNextP)/timeSum) * 100 
+      
+      distanceSum <- sum(totalDistance$distToNextP)
+      totalDistance$distancePercent <- ((totalDistance$distToNextP)/distanceSum) * 100 
+      
+      testDistance <- sum(totalDistance$distancePercent)
+      testTime <- sum(totalTime$timePercent)
+      
+      totalSpeed <- merge(totalDistance,totalTime,by=c("speedKmPerH", "login"))
+      
+      totalSpeed <- totalSpeed[(totalSpeed$distancePercent>0.5),]
+      totalSpeed <- totalSpeed[(totalSpeed$timePercent>0.5),]
+      # END calculate SPEED
+      
+      #calculate RATE
+      totalDistance <- aggregate(distToNextP~rate + login,filteredData,sum)
+      totalTime <- aggregate(timeToNextP~rate + login,filteredData,sum)
+      #convert seconds to minuters and round
+      totalTime$timeToNextP <- ifelse(totalTime$timeToNextP ==0, 
+                                      0, 0.6 * (totalTime$timeToNextP/60 - floor(totalTime$timeToNextP/60)) + floor(totalTime$timeToNextP/60))
+      
+      timeSum <- sum(totalTime$timeToNextP)
+      totalTime$timePercent <- ((totalTime$timeToNextP)/timeSum) * 100 
+      
+      distanceSum <- sum(totalDistance$distToNextP)
+      totalDistance$distancePercent <- ((totalDistance$distToNextP)/distanceSum) * 100 
+      
+      testDistance <- sum(totalDistance$distancePercent)
+      testTime <- sum(totalTime$timePercent)
+      
+      totalRate <- merge(totalDistance,totalTime,by=c("rate", "login"))
+      
+      totalRate <- totalRate[(totalRate$distancePercent>0.5),]
+      totalRate <- totalRate[(totalRate$timePercent>0.5),]
+      #END calculate RATE
+      if(!(is.data.frame(filteredData) && nrow(filteredData)==0)) {
+        output$percentileSpeedRate <- renderPlot({
+          if(input$AxisXPercentile == "speedKmPerH") {
+            selectedColumnTest <- totalSpeed[,c(input$AxisYPercentile)]
+            selectedColumn <- totalTime$timePercent
+            
+            interactivePlot <- ggplot(totalSpeed, aes(x=format(speedKmPerH), y=selectedColumnTest, fill=factor(login)
+            )) +
+              geom_bar(stat="identity", position = 'dodge') + labs(fill = "Me/Others", x=input$AxisXPercentile, y=input$AxisYPercentile)
+            
+            print(interactivePlot)
+          }
+          else {
+            selectedColumnTest <- totalRate[,c(input$AxisYPercentile)]
+            selectedColumn <- totalRate$timePercent
+            
+            interactivePlot <- ggplot(totalRate, aes(x=format(rate), y=selectedColumnTest, fill=factor(login)
+            )) +
+              geom_bar(stat="identity", position = 'dodge') + labs(fill = "Me/Others", x=input$AxisXPercentile, y=input$AxisYPercentile)
+            
+            print(interactivePlot)
+          }
+        })
+      }
     }
   })
-    
-  # 
-  # observeEvent(input$selectedDates, {
-  #   if(!is.null(input$selectedDates))
-  #   {
-  #     if(length(input$selectedDates) == 2)
-  #     {
-  #       activityType <- input$activityType
-  #       dataType <- input$dataType
-  #       
-  #       switch(dataType, 
-  #              "MONTH" = {
-  #                filteredData <- getFilteredData(activityType, "%Y-%m")
-  #              },
-  #              "YEAR" = {
-  #                filteredData <- getFilteredData(activityType, "%Y")
-  #              }
-  #       )
-  #       
-  #       temp <- c(input$selectedDates[1], input$selectedDates[2])
-  #       filteredData <- filteredData[filteredData$date %in% temp, ]
-  #       filteredData$speedKmPerH <- round(filteredData$speedKmPerH)
-  #       filteredData$rate <- round(filteredData$rate, digits = 1)
-  #       
-  #       #calculate SPEED
-  #       totalDistance <- aggregate(distToNextP~speedKmPerH + date,filteredData,sum)
-  #       totalTime <- aggregate(timeToNextP~speedKmPerH + date,filteredData,sum)
-  #       #convert seconds to minuters and round
-  #       totalTime$timeToNextP <- ifelse(totalTime$timeToNextP ==0,
-  #                                       0, 0.6 * (totalTime$timeToNextP/60 - floor(totalTime$timeToNextP/60)) + floor(totalTime$timeToNextP/60))
-  #       
-  #       timeSum <- sum(totalTime$timeToNextP)
-  #       totalTime$timePercent <- ((totalTime$timeToNextP)/timeSum) * 100
-  #       
-  #       distanceSum <- sum(totalDistance$distToNextP)
-  #       totalDistance$distancePercent <- ((totalDistance$distToNextP)/distanceSum) * 100
-  #       
-  #       testDistance <- sum(totalDistance$distancePercent)
-  #       testTime <- sum(totalTime$timePercent)
-  #       totalSpeed <- merge(totalDistance,totalTime,by=c("speedKmPerH", "date"))
-  #       
-  #       # Remove row if percent is smaller than 1%
-  #       browser()
-  #       totalSpeed <- totalSpeed[(totalSpeed$distancePercent>0.5),]
-  #       totalSpeed <- totalSpeed[(totalSpeed$timePercent>0.5),]
-  #       print("sth")
-  #       # END calculate SPEED
-  #       
-  #       #calculate RATE
-  #       totalDistance <- aggregate(distToNextP~rate + date,filteredData,sum)
-  #       totalTime <- aggregate(timeToNextP~rate + date,filteredData,sum)
-  #       #convert seconds to minuters and round
-  #       totalTime$timeToNextP <- ifelse(totalTime$timeToNextP ==0,
-  #                                       0, 0.6 * (totalTime$timeToNextP/60 - floor(totalTime$timeToNextP/60)) + floor(totalTime$timeToNextP/60))
-  #       
-  #       timeSum <- sum(totalTime$timeToNextP)
-  #       totalTime$timePercent <- ((totalTime$timeToNextP)/timeSum) * 100
-  #       
-  #       distanceSum <- sum(totalDistance$distToNextP)
-  #       totalDistance$distancePercent <- ((totalDistance$distToNextP)/distanceSum) * 100
-  #       
-  #       testDistance <- sum(totalDistance$distancePercent)
-  #       testTime <- sum(totalTime$timePercent)
-  #       
-  #       totalRate <- merge(totalDistance,totalTime,by=c("rate", "date"))
-  #       browser()
-  #       # Remove row if percent is smaller than 1%
-  #       totalRate <- totalRate[(totalRate$distancePercent>0.5),]
-  #       totalRate <- totalRate[(totalRate$timePercent>0.5),]
-  #       #END calculate RATE
-  #       
-  #       if(!(is.data.frame(filteredData) && nrow(filteredData)==0)) {
-  #         output$statisticSpeedRate <- renderPlot({
-  #           if(input$AxisXStatistics == "speedKmPerH") {
-  #             selectedColumnTest <- totalSpeed[,c(input$AxisYStatistics)]
-  #             selectedColumn <- totalTime$timePercent
-  #             
-  #             interactivePlot <- ggplot(totalSpeed, aes(x=format(speedKmPerH), y=selectedColumnTest, fill=factor(date)
-  #             )) +
-  #               geom_bar(stat="identity", position = 'dodge') + labs(fill = "Date", x=input$AxisXStatistics, y=input$AxisYStatistics)
-  #             
-  #             print(interactivePlot)
-  #           }
-  #           else {
-  #             selectedColumnTest <- totalRate[,c(input$AxisYStatistics)]
-  #             selectedColumn <- totalRate$timePercent
-  #             
-  #             interactivePlot <- ggplot(totalRate, aes(x=format(rate), y=selectedColumnTest, fill=factor(date)
-  #             )) +
-  #               geom_bar(stat="identity", position = 'dodge') + labs(fill = "Date", x=input$AxisXStatistics, y=input$AxisYStatistics)
-  #             
-  #             print(interactivePlot)
-  #           }
-  #         })
-  #       }
-  #     }
-  #   }
-  # })
 }
 
 function(input, output, session) {
