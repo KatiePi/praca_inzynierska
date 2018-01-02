@@ -11,7 +11,9 @@ source("~/Analyzer.R")
 source("./DbWorker.R")
 
 setGlobalEnv <- function(){
-  Sys.setlocale("LC_TIME", "C")
+  Sys.setlocale(category = "LC_ALL", locale = "Polish")
+  sessionInfo()
+  #Sys.setlocale("LC_ALL", "UTF-8")
 }
 
 USER_LOGIN.env <- new.env()
@@ -81,6 +83,7 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
   })
 
   renderChooseTrainingToAnalyse <- function () {
+    browser()
     getTrainingsDataQuery <- paste("select distinct
                                    CONCAT(activity.name, ', ', activity.date) as fullName,
                                    activity.name
@@ -89,6 +92,8 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
                                    where user.login like '", userLogin, "'", sep ="")
     
     trainings <- dbGetQuery(dbConnection, getTrainingsDataQuery)
+    Encoding(trainings$name) <- "UTF-8"
+    Encoding(trainings$fullName) <- "UTF-8"
     
     if(is.data.frame(trainings) && nrow(trainings)!=0) {
       
@@ -142,6 +147,7 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
                      input$selectedSingleTraining[1], "'" , sep="")
       
       gpxAsDataFrame <- dbGetQuery(dbConnection, query)
+      Encoding(gpxAsDataFrame$name) <- "UTF-8"
       gpxAsDataFrame$mean <- with(gpxAsDataFrame, mean(speedKmPerH))
       #caltulate if speed is above or below mean
       gpxAsDataFrame$speedComparison <- 0
@@ -168,7 +174,8 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
                         input$choosenTraining[1], "', '", input$choosenTraining[2] , "')", sep="")
 
         gpxAsDataFrame <- dbGetQuery(dbConnection, query)
-        
+        Encoding(gpxAsDataFrame$name) <- "UTF-8"
+      
         gpxAsDataFrame$speedKmPerH <- round(gpxAsDataFrame$speedKmPerH)
         gpxAsDataFrame$rate <- round(gpxAsDataFrame$rate, digits = 1)
         
@@ -311,7 +318,7 @@ renderUserDataLogIn<-function(input, output, session, dbConnection){
     else {
       USER_LOGIN.env$var <- login
       output$loginProcessMessage <- renderText({ 
-        "<font size='3' color='green'>Login was succesfull!</font>"
+        "<font size='3' color='green'>Login was successfull!</font>"
       })
       renderSingleTrainingCharts(input, output, session, dbConnection)
       renderStatistisc(input, output, session, dbConnection)

@@ -1,21 +1,23 @@
 library(shiny)
 library(shinyjs)
+Sys.setlocale("LC_ALL", "Polish")
 
 #1. Problem z dekodowaniem znakow - znaki polskiego
 renderSingleTrainingAnalyzer<-function()
 {
   fluidRow(
       column(12,
-         HTML("<center><strong>ANALYZE SINGLE TRAINING</strong></center>"),
+         tags$div(HTML("<center><strong>ANALYZE SINGLE TRAINING</strong></center>"), style = "background-color: rgba(0,0,0,0.2); font-family: Verdana"),
          fluidRow(
             column(2, 
                    #file input
-                   fileInput("addedFile", label = "Dodaj trening do analizy", multiple = FALSE, accept = NULL, width = NULL,
+                   fileInput("addedFile", label = "Add training to analyse", multiple = FALSE, accept = NULL, width = NULL,
                              buttonLabel = "Browse...", placeholder = "No file selected"),
                    hr(),
                    #data actualization
-                   HTML("<label>Zaktualizuj dane automatycznie</label>"),
-                   actionButton("updateDataBtn", "Aktualizuj"),
+                   HTML("<label>Update data automatically</label>"),
+                   br(),
+                   actionButton("updateDataBtn", "Update"),
                    br(),br(),
                    hr(),
                    #input single training to analyze
@@ -23,19 +25,18 @@ renderSingleTrainingAnalyzer<-function()
                    br(),
                    sliderInput("speedLowessScale", "Lowess value", 0.01, 1, 0.01, step = 0.01)
             ),
-            column(5,
-                   h4("Route on the map"),
+            column(5, align="center",
+                   HTML("<center><strong>Route on the map</strong></center>"),
                    plotOutput("examplePlot", inline = TRUE)
                    
             ),
-            column(5,
-                   h4("Speed"),
+            column(5, align="center",
+                   HTML("<center><strong>Speed</strong></center>"),
                    plotOutput("examplePlot2", inline = TRUE)
             )
       ),
-      HTML("<center><strong>ANALYZE TWO TRAININGS</strong></center>"),
+      tags$div(HTML("<center><strong>COMPARE TWO TRAININGS</strong></center>"), style = "background-color: rgba(0,0,0,0.2); font-family: Verdana"),
       fluidRow(
-        HTML("<label>Compare two trainings</label>"),
         uiOutput("trainingSelect"),
         #get this into one row next to other
         selectInput("AxisY", "Axis Y:",
@@ -54,7 +55,7 @@ renderSingleTrainingAnalyzer<-function()
 
 renderStatistics<-function(){
   fluidRow(
-    HTML("<label>STATISTICS</label>"),
+    tags$div(HTML("<center><strong>YOUR STATISTICS</strong></center>"), style = "background-color: rgba(0,0,0,0.2); font-family: Verdana"),
     selectInput("statisticType", "Statistic type:",
                 c("Monthly" = "%Y-%m",
                   "Yearly" = "%Y"),
@@ -69,7 +70,7 @@ renderStatistics<-function(){
                   "Dodge" = "dodge"),
                 selected = "stack"),
     plotOutput(outputId = "statisticPlot"),
-    HTML("<label>COMPARE YOUR SPEED/RATE</label>"),
+    tags$div(HTML("<center><strong>COMPARE YOUR SPEED/RATE</strong></center>"), style = "background-color: rgba(0,0,0,0.2); font-family: Verdana"),
     selectInput("activityType", "Activity type:",
                 c("Running" = "RUNNING",
                   "Riding" = "BIKE_RIDING",
@@ -94,35 +95,35 @@ renderStatistics<-function(){
 
 renderUserData<-function(){
   fluidRow(
-    column(4,
-           HTML("<label>LOG IN</label>"),
+    column(3,align="center",
+           tags$div(HTML("<label>LOG IN</label>"), style = "background-color: rgba(0,0,0,0.2); font-family: Verdana"),
            hr(),
-           textInput("userDataLoginLog", "Podaj login"),
-           textInput("userDataPasswordLog", "Podaj haslo"),
-           actionButton("userDataApproveButtonLog", "Zatwierdz"),
+           textInput("userDataLoginLog", "Login"),
+           passwordInput("userDataPasswordLog", "Password"),
+           actionButton("userDataApproveButtonLog", "Send"),
            br(),br(),
            htmlOutput("loginProcessMessage"),
            hr()
     ),
-    column(4
-    ),
-    column(4,
-           HTML("<label>REGISTRATION</label>"),
+    column(3, align="center",
+           tags$div(HTML("<label>REGISTRATION</label>"), style = "background-color: rgba(0,0,0,0.2); font-family: Verdana"),
            hr(),
-           textInput("userDataEmailReg", "Podaj e-mail"),
-           textInput("userDataPasswordReg", "Podaj haslo"),
-           textInput("userDataLoginReg", "Podaj login"),
-           textInput("userDataAgeReg", "Podaj wiek"),
-           actionButton("userDataApproveButtonReg", "Zatwierdz"),
+           textInput("userDataEmailReg", "E-mail"),
+           passwordInput("userDataPasswordReg", "Password"),
+           textInput("userDataLoginReg", "Login"),
+           textInput("userDataAgeReg", "Age"),
+           actionButton("userDataApproveButtonReg", "Send"),
            br(),br(),
            htmlOutput("registrationProcessMessage"),
-           hr()
+           hr(),br(),br(),br(),br(),br(),br(),br(),br(),br(),br(),br(),
+           br(),br(),br(),br(),br(),br(), br(),br(),br(),br(),br(),br()
     )
   )
 }
 
 renderComparisionSection<-function(){
   fluidRow(
+    tags$div(HTML("<center><strong>PERCENTILE CHART</strong></center>"), style = "background-color: rgba(0,0,0,0.2); font-family: Verdana"),
     selectInput("percentileActivityType", "Activity type:",
                 c("Running" = "RUNNING",
                   "Bike riding" = "BIKE_RIDING",
@@ -146,7 +147,7 @@ renderComparisionSection<-function(){
                 selected = "0.5"),
     plotOutput(outputId = "percentilePlot"),
     
-    HTML("<label>COMPARE YOUR SPEED/RATE WITH OTHER WITHIN MONTH/YEAR</label>"),
+    tags$div(HTML("<center><strong>COMPARE YOUR SPEED/RATE WITH OTHER WITHIN MONTH/YEAR</strong></center>"), style = "background-color: rgba(0,0,0,0.2); font-family: Verdana"),
     selectInput("activityTypePercentile", "Activity type:",
                 c("Running" = "RUNNING",
                   "Riding" = "BIKE_RIDING",
@@ -171,8 +172,12 @@ renderComparisionSection<-function(){
 
 fluidPage(
   useShinyjs(),
-  style = "background-color: #B0E0E6;",
-  navbarPage("Training analyzer",
+  
+  # 
+  # style = "background-color: #B0E0E6;",
+  style = "background: url(http://www.ahealthy.us/wp-content/uploads/2014/01/exercising-and-hypertension-ahealthyus.jpg);",
+  
+  navbarPage(inverse=TRUE, "Training analyzer",
                      tabPanel("User data",
                               renderUserData()),
                      tabPanel("Analyze single training",
