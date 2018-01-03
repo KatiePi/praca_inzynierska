@@ -23,6 +23,8 @@ renderSingleTrainingAnalyzer<-function()
                    #input single training to analyze
                    uiOutput("selectSingleTraining"),
                    br(),
+                   sliderInput("zoomScale", "Zooming", 3, 21, 13, step = 1),
+                   br(),
                    sliderInput("speedLowessScale", "Lowess value", 0.01, 1, 0.01, step = 0.01)
             ),
             column(5, align="center",

@@ -7,6 +7,8 @@ library(R.oo)
 library(ggplot2)
 library(plyr)
 library(data.table)
+library(ggmap)
+library(RgoogleMaps)
 source("~/Analyzer.R")
 source("./DbWorker.R")
 
@@ -46,6 +48,22 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
   userLogin <- USER_LOGIN.env$var
   
   renderCharts <- function(gpxAsDataFrame) {
+    
+    observeEvent(input$zoomScale, {
+      
+    zoomScale <- input$zoomScale
+    
+    # mapPlace <- get_map(location = c(lon = mean(gpxAsDataFrame$longitude), lat = mean(gpxAsDataFrame$latitude)), zoom = 13,
+    #                       maptype = "hybrid", scale =  "auto")
+    
+    # mapPlace <- get_map(location = c(left = min(gpxAsDataFrame$longitude), right = max(gpxAsDataFrame$longitude), 
+    #                                 bottom = min(gpxAsDataFrame$latitude), top = max(gpxAsDataFrame$latitude)), zoom = 13 ,
+    #                      maptype = "hybrid", api_key = "AIzaSyChU6_qmaDGfU9GkCX1tUpaRsYNpmu1XFM")
+    
+    mapPlace <- get_googlemap(center = c(lon = mean(gpxAsDataFrame$longitude), lat = mean(gpxAsDataFrame$latitude)),
+                       zoom = zoomScale,
+                       key = "AIzaSyChU6_qmaDGfU9GkCX1tUpaRsYNpmu1XFM")
+    
     observeEvent(input$speedLowessScale, { 
       speedLowessScale = input$speedLowessScale
       gpxAsDataFrame$lowess.speed <- lowess(gpxAsDataFrame$speedKmPerH, f = speedLowessScale)$y
@@ -54,17 +72,34 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
       #caltulate if speed is above or below mean
       gpxAsDataFrame$speedComparison <- 0
       gpxAsDataFrame <- transform(gpxAsDataFrame, speedComparison = ifelse(lowess.speed > mean, "ABOVE", "BELOW"))
-      # mozna dorobic z wysokoscia nad p morza
-      #gpxAsDataFrame$lowess.elevation <- lowess(gpxAsDataFrame$ele, f = 0.2)$y
-      output$examplePlot <- renderPlot({plot(gpxAsDataFrame$longitude, gpxAsDataFrame$latitude,
-                                             col = c("green","red")[factor(gpxAsDataFrame$speedComparison)],
-                                             ylab = "latitude", xlab = "longitude")},
+      
+      output$examplePlot <- renderPlot({
+        ggmap(mapPlace) +
+          geom_point(data = gpxAsDataFrame, aes(x = longitude, y = latitude, fill = "red", alpha = 0.8), col = c("green","red")[factor(gpxAsDataFrame$speedComparison)]) +
+          guides(fill=FALSE, alpha=FALSE, size=FALSE)},
                                        width = 600, height = 400)
+      
+      
+      
+      # output$examplePlot <- renderPlot({plot(gpxAsDataFrame$longitude, gpxAsDataFrame$latitude,
+      #                                        col = c("green","red")[factor(gpxAsDataFrame$speedComparison)],
+      #                                        ylab = "latitude", xlab = "longitude")},
+      #                                  width = 600, height = 400)
+      
+      # output$examplePlot <- renderPlot({ 
+      #   interactivePlot <- ggplot(gpxAsDataFrame, aes(x=longitude, y=latitude, col = c("green","red")[factor(gpxAsDataFrame$speedComparison)], 
+      #                                                 ylab = "latitude", xlab = "longitude")) +
+      #     geom_bar(stat="identity",colour="black", position = 'dodge') + labs(fill = "Training", x=input$AxisX, y=input$AxisY)
+      #   
+      #   print(interactivePlot)
+      # })
       
       output$examplePlot2 <- renderPlot({plot(gpxAsDataFrame$speedKmPerH, type = "l", bty = "n", xaxt = "n", ylab = "Speed (km/h)", xlab = "")
         lines(gpxAsDataFrame$lowess.speed, col = "green", lwd = 3)
         legend(x="bottom", legend = c("GPS speed", "Lowess speed"),
                col = c("black", "green"), lwd = c(1,3), bty = "n")}, width = 600, height = 400)
+    })
+    
     })
   }
 
@@ -83,7 +118,6 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
   })
 
   renderChooseTrainingToAnalyse <- function () {
-    browser()
     getTrainingsDataQuery <- paste("select distinct
                                    CONCAT(activity.name, ', ', activity.date) as fullName,
                                    activity.name
