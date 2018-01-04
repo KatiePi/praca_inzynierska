@@ -9,13 +9,12 @@ library(plyr)
 library(data.table)
 library(ggmap)
 library(RgoogleMaps)
+library(numbers)
 source("~/Analyzer.R")
 source("./DbWorker.R")
 
 setGlobalEnv <- function(){
   Sys.setlocale(category = "LC_ALL", locale = "Polish")
-  sessionInfo()
-  #Sys.setlocale("LC_ALL", "UTF-8")
 }
 
 USER_LOGIN.env <- new.env()
@@ -60,9 +59,11 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
     #                                 bottom = min(gpxAsDataFrame$latitude), top = max(gpxAsDataFrame$latitude)), zoom = 13 ,
     #                      maptype = "hybrid", api_key = "AIzaSyChU6_qmaDGfU9GkCX1tUpaRsYNpmu1XFM")
     
-    mapPlace <- get_googlemap(center = c(lon = mean(gpxAsDataFrame$longitude), lat = mean(gpxAsDataFrame$latitude)),
-                       zoom = zoomScale,
-                       key = "AIzaSyChU6_qmaDGfU9GkCX1tUpaRsYNpmu1XFM")
+    if(!(is.data.frame(gpxAsDataFrame) && nrow(gpxAsDataFrame)==0)) {
+      mapPlace <- get_googlemap(center = c(lon = mean(gpxAsDataFrame$longitude), lat = mean(gpxAsDataFrame$latitude)),
+                                zoom = zoomScale,
+                                key = "AIzaSyChU6_qmaDGfU9GkCX1tUpaRsYNpmu1XFM")
+    }
     
     observeEvent(input$speedLowessScale, { 
       speedLowessScale = input$speedLowessScale
@@ -78,22 +79,7 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
           geom_point(data = gpxAsDataFrame, aes(x = longitude, y = latitude, fill = "red", alpha = 0.8), col = c("green","red")[factor(gpxAsDataFrame$speedComparison)]) +
           guides(fill=FALSE, alpha=FALSE, size=FALSE)},
                                        width = 600, height = 400)
-      
-      
-      
-      # output$examplePlot <- renderPlot({plot(gpxAsDataFrame$longitude, gpxAsDataFrame$latitude,
-      #                                        col = c("green","red")[factor(gpxAsDataFrame$speedComparison)],
-      #                                        ylab = "latitude", xlab = "longitude")},
-      #                                  width = 600, height = 400)
-      
-      # output$examplePlot <- renderPlot({ 
-      #   interactivePlot <- ggplot(gpxAsDataFrame, aes(x=longitude, y=latitude, col = c("green","red")[factor(gpxAsDataFrame$speedComparison)], 
-      #                                                 ylab = "latitude", xlab = "longitude")) +
-      #     geom_bar(stat="identity",colour="black", position = 'dodge') + labs(fill = "Training", x=input$AxisX, y=input$AxisY)
-      #   
-      #   print(interactivePlot)
-      # })
-      
+
       output$examplePlot2 <- renderPlot({plot(gpxAsDataFrame$speedKmPerH, type = "l", bty = "n", xaxt = "n", ylab = "Speed (km/h)", xlab = "")
         lines(gpxAsDataFrame$lowess.speed, col = "green", lwd = 3)
         legend(x="bottom", legend = c("GPS speed", "Lowess speed"),
@@ -108,6 +94,11 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
      if (is.null(addedFile)) {
       return(NULL)
      }
+    
+    userDataLogin <- USER_LOGIN.env$var
+    analyzerObj <- analyzer$new(addedFile = addedFile, userLogin = userDataLogin)
+    gpxAsDataFrame <- analyzerObj$caltulateGPSData()
+    
     renderChooseTrainingToAnalyse()
     renderStatistisc(input, output, session, dbConnection)
     renderPercentiles(input, output, session, dbConnection)
@@ -119,10 +110,11 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
 
   renderChooseTrainingToAnalyse <- function () {
     getTrainingsDataQuery <- paste("select distinct
-                                   CONCAT(activity.name, ', ', activity.date) as fullName,
+                                   CONCAT(activity.name, ', ', activity.date, ',' , activityType.name) as fullName,
                                    activity.name
                                    from activity
                                    join user on activity.userId = user.iduser
+                                   join activityType on activity.activityType = activityType.idActivityType
                                    where user.login like '", userLogin, "'", sep ="")
     
     trainings <- dbGetQuery(dbConnection, getTrainingsDataQuery)
@@ -158,7 +150,6 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
       singleFileDF <- data.frame(name = singleFileName, datapath = singleFilePath)
       analyzerObj <- analyzer$new(addedFile = singleFileDF, userLogin = userDataLogin)
       gpxAsDataFrame <- analyzerObj$caltulateGPSData()
-      cat("foreach ")
       n <- n + 1
     })
     do.call(file.remove, list(files))
@@ -177,7 +168,8 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
                      activity.name
                      from gpxdata join activity on gpxdata.idActivity = activity.idActivity
                      join user on user.iduser = activity.userId
-                     where user.login like '", USER_LOGIN.env$var, "'", "and CONCAT(activity.name, ', ', activity.date) like '",
+                     join activityType on activity.activityType = activityType.idActivityType
+                     where user.login like '", USER_LOGIN.env$var, "'", "and CONCAT(activity.name, ', ', activity.date, ',' , activityType.name) like '",
                      input$selectedSingleTraining[1], "'" , sep="")
       
       gpxAsDataFrame <- dbGetQuery(dbConnection, query)
@@ -204,7 +196,8 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
                         gpxdata.rate
                         from gpxdata join activity on gpxdata.idActivity = activity.idActivity
                         join user on user.iduser = activity.userId
-                       where user.login like '", USER_LOGIN.env$var, "'", "and CONCAT(activity.name, ', ', activity.date) in ('", 
+                        join activityType on activity.activityType = activityType.idActivityType
+                       where user.login like '", USER_LOGIN.env$var, "'", "and CONCAT(activity.name, ', ', activity.date, ',' , activityType.name) in ('", 
                         input$choosenTraining[1], "', '", input$choosenTraining[2] , "')", sep="")
 
         gpxAsDataFrame <- dbGetQuery(dbConnection, query)
@@ -212,6 +205,8 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
       
         gpxAsDataFrame$speedKmPerH <- round(gpxAsDataFrame$speedKmPerH)
         gpxAsDataFrame$rate <- round(gpxAsDataFrame$rate, digits = 1)
+        gpxAsDataFrame$rate <- ifelse((gpxAsDataFrame$rate)-floor(gpxAsDataFrame$rate) > 0.5, 
+                                           floor(gpxAsDataFrame$rate) + 1, gpxAsDataFrame$rate)
         
   #calculate SPEED
         totalDistance <- aggregate(distToNextP~speedKmPerH + name,gpxAsDataFrame,sum)
@@ -230,7 +225,19 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
         testTime <- sum(totalTime$timePercent)
         
         totalSpeed <- merge(totalDistance,totalTime,by=c("speedKmPerH", "name"))
+        
+        #Remove points with big influence
+        totalSpeed <- totalSpeed[!is.na(totalSpeed$speedKmPerH),]
+        speed_mean <- mean(totalSpeed$speedKmPerH, na.rm=TRUE)
+        n <- nrow(totalSpeed)
+        totalSpeed$h <- 1/n + (totalSpeed$speedKmPerH - speed_mean)^2/sum((totalSpeed$speedKmPerH - speed_mean)^2)
+        # remove values if they have influence bigger than 0.015
+        totalSpeed <- totalSpeed[(totalSpeed$h<0.1),]
+        totalSpeed <- within(totalSpeed, rm(h))
         # END calculate SPEED
+        
+        totalSpeed <- totalSpeed[(totalSpeed$distancePercent>0.2),]
+        totalSpeed <- totalSpeed[(totalSpeed$timePercent>0.2),]
         
   #calculate RATE
         totalDistance <- aggregate(distToNextP~rate + name,gpxAsDataFrame,sum)
@@ -251,6 +258,19 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
         totalRate <- merge(totalDistance,totalTime,by=c("rate", "name"))
         #END calculate RATE
         
+        #Remove points with big influence
+        totalRate <- totalRate[!is.na(totalRate$rate),]
+        rate_mean <- mean(totalRate$rate, na.rm=TRUE)
+        n <- nrow(totalRate)
+        totalRate$h <- 1/n + (totalRate$rate - rate_mean)^2/sum((totalRate$rate - rate_mean)^2)
+        # remove values if they have influence bigger than 0.015
+        totalRate <- totalRate[(totalRate$h<0.1),]
+        totalRate <- within(totalRate, rm(h))
+        # END calculate SPEED
+        
+        totalRate <- totalRate[(totalRate$distancePercent>0.2),]
+        totalRate <- totalRate[(totalRate$timePercent>0.2),]
+        
         if(!(is.data.frame(gpxAsDataFrame) && nrow(gpxAsDataFrame)==0)) {
           output$percentPlot <- renderPlot({
             if(input$AxisX == "speedKmPerH") {
@@ -259,7 +279,7 @@ renderSingleTrainingCharts<-function(input, output, session, dbConnection){
   
                 interactivePlot <- ggplot(totalSpeed, aes(x=format(speedKmPerH), y=selectedColumnTest, fill=factor(name)
                 )) +
-                  geom_bar(stat="identity",colour="black", position = 'dodge') + labs(fill = "Training", x=input$AxisX, y=input$AxisY)
+                  geom_bar(stat="identity", position = 'dodge') + labs(fill = "Training", x=input$AxisX, y=input$AxisY)
   
                 print(interactivePlot)
             }
@@ -473,6 +493,8 @@ renderStatistisc<-function(input, output, session, dbConnection) {
         filteredData <- filteredData[filteredData$date %in% temp, ]
         filteredData$speedKmPerH <- round(filteredData$speedKmPerH)
         filteredData$rate <- round(filteredData$rate, digits = 1)
+        filteredData$rate <- ifelse((filteredData$rate)-floor(filteredData$rate) > 0.5, 
+                                      floor(filteredData$rate) + 1, filteredData$rate)
 
         #calculate SPEED
         totalDistance <- aggregate(distToNextP~speedKmPerH + date,filteredData,sum)
@@ -491,7 +513,7 @@ renderStatistisc<-function(input, output, session, dbConnection) {
         testTime <- sum(totalTime$timePercent)
         totalSpeed <- merge(totalDistance,totalTime,by=c("speedKmPerH", "date"))
         
-        # Remove row if percent is smaller than 1%
+        # Remove row if percent is smaller than 0.5%
         totalSpeed <- totalSpeed[(totalSpeed$distancePercent>0.5),]
         totalSpeed <- totalSpeed[(totalSpeed$timePercent>0.5),]
 
@@ -514,7 +536,7 @@ renderStatistisc<-function(input, output, session, dbConnection) {
         testTime <- sum(totalTime$timePercent)
 
         totalRate <- merge(totalDistance,totalTime,by=c("rate", "date"))
-        # Remove row if percent is smaller than 1%
+        # Remove row if percent is smaller than 0.5%
         totalRate <- totalRate[(totalRate$distancePercent>0.5),]
         totalRate <- totalRate[(totalRate$timePercent>0.5),]
         #END calculate RATE
@@ -679,7 +701,6 @@ renderPercentiles<-function(input, output, session, dbConnection) {
 
   getMonthYearData <- function(uniqueDates) {
       for(i in 1:length(uniqueDates)) {
-        print("foreach")
         query <- paste("select
                        gpxdata.distToNextP,
                        gpxdata.timeToNextP,
@@ -752,6 +773,8 @@ renderPercentiles<-function(input, output, session, dbConnection) {
       print(filteredData)
       filteredData$speedKmPerH <- round(filteredData$speedKmPerH)
       filteredData$rate <- round(filteredData$rate, digits = 1)
+      filteredData$rate <- ifelse((filteredData$rate)-floor(filteredData$rate) > 0.5, 
+                                    floor(filteredData$rate) + 1, filteredData$rate)
       
       #calculate SPEED
       totalDistance <- aggregate(distToNextP~speedKmPerH + login,filteredData,sum)

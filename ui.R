@@ -174,12 +174,15 @@ renderComparisionSection<-function(){
 
 fluidPage(
   useShinyjs(),
-  
   # 
   # style = "background-color: #B0E0E6;",
+  # C:/Users/Kasia/Documents/inzynierka/RProject/exercising-and-hypertension-ahealthyus.jpg
   style = "background: url(http://www.ahealthy.us/wp-content/uploads/2014/01/exercising-and-hypertension-ahealthyus.jpg);",
   
+  # style = "background: url(exercising-and-hypertension-ahealthyus.jpg);",
+  
   navbarPage(inverse=TRUE, "Training analyzer",
+             
                      tabPanel("User data",
                               renderUserData()),
                      tabPanel("Analyze single training",
